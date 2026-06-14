@@ -19,6 +19,7 @@ const state = {
   selected: null,
   heroIndex: 0,
   heroTimer: null,
+  loadError: "",
   device: loadDeviceState()
 };
 
@@ -54,8 +55,11 @@ async function fetchJson(url, timeout = 22000) {
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    return response.json();
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error || payload.status_message) {
+      throw new Error(payload.error || payload.status_message || `${response.status} ${response.statusText}`);
+    }
+    return payload;
   } finally {
     clearTimeout(timer);
   }
@@ -101,6 +105,7 @@ async function refreshDomains() {
 }
 
 async function loadRows() {
+  state.loadError = "";
   $("#sections").innerHTML = `<p class="loading-note">Loading TMDB trending and recent titles...</p>`;
   for (const [key] of rowEndpoints) {
     await loadRow(key);
@@ -125,7 +130,8 @@ async function loadRow(key) {
       .map((item) => normalize(item, fallbackType));
     state.rows.set(key, { title: config.title, items, page, totalPages: Math.min(payload.total_pages || 1, 500) });
     items.forEach((item) => state.itemCache.set(cacheKey(item.mediaType, item.id), item));
-  } catch {
+  } catch (error) {
+    state.loadError = error.message || "TMDB data could not be loaded.";
     state.rows.set(key, { title: config.title, items: [], page, totalPages: 1 });
   }
 }
@@ -165,10 +171,25 @@ function renderHome() {
   const personalHtml = personalRows.map(([key, title, items]) => sectionHtml(key, { title, items }, false)).join("");
   const dynamicHtml = [...state.rows.entries()].map(([key, row]) => sectionHtml(key, row, true)).join("");
 
-  $("#sections").innerHTML = personalHtml + dynamicHtml || `<p class="loading-note">Loading TMDB titles...</p>`;
+  $("#sections").innerHTML = personalHtml + dynamicHtml || setupMessage();
   wireCards(document);
   wirePaging();
   wireStars(document);
+}
+
+function setupMessage() {
+  if (!state.loadError) return `<p class="loading-note">Loading TMDB titles...</p>`;
+  return `
+    <section class="setup-error">
+      <h2>TMDB data is not loading</h2>
+      <p>${escapeHtml(state.loadError)}</p>
+      <p>On Render, add environment variables in the service dashboard. A local .env file is not uploaded to GitHub or Render.</p>
+      <code>TMDB_READ_ACCESS_TOKEN</code>
+      <code>TMDB_API_KEY</code>
+      <code>OMDB_API_KEY</code>
+      <a href="/api/health" target="_blank" rel="noreferrer">Check API health</a>
+    </section>
+  `;
 }
 
 function sectionHtml(key, row, canPage) {
