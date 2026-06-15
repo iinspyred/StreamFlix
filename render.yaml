@@ -9,11 +9,8 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: OMDB_API_KEY
-        value: 1322218c
         sync: false
       - key: TMDB_READ_ACCESS_TOKEN
-        value: eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJlNDFkNDE0OWVmZTlkNGI3N2IxNzMxOTA3YWJiZjY0MCIsIm5iZiI6MTc0MjQzMzYwOS4xNDQsInN1YiI6IjY3ZGI2ZDQ5MTNkNGIxYWVkNGU5ZTYxMCIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.NCMjbqQX5ShS3tnG530hTUPNdjGsn30ky4wzf9FQLO4
         sync: false
       - key: TMDB_API_KEY
-        value: e41d4149efe9d4b77b1731907abbf640
         sync: false

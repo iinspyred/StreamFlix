@@ -54,14 +54,6 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function envStatus() {
-  return {
-    omdbConfigured: Boolean(process.env.OMDB_API_KEY),
-    tmdbTokenConfigured: Boolean(process.env.TMDB_READ_ACCESS_TOKEN),
-    tmdbApiKeyConfigured: Boolean(process.env.TMDB_API_KEY)
-  };
-}
-
 async function fetchWithTimeout(url, options = {}, timeout = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -217,10 +209,7 @@ async function handleTmdb(req, res) {
   if (!token && apiKey) {
     tmdbUrl.searchParams.set("api_key", apiKey);
   } else if (!token && !apiKey) {
-    sendJson(res, 503, {
-      error: "Set TMDB_READ_ACCESS_TOKEN or TMDB_API_KEY on the host.",
-      ...envStatus()
-    });
+    sendJson(res, 200, { error: "Set TMDB_READ_ACCESS_TOKEN or TMDB_API_KEY on the host." });
     return;
   }
 
@@ -232,12 +221,9 @@ async function handleTmdb(req, res) {
       }
     });
     const payload = await response.json();
-    sendJson(res, response.ok ? 200 : response.status, {
-      ...payload,
-      ...(!response.ok ? envStatus() : {})
-    });
+    sendJson(res, response.ok ? 200 : response.status, payload);
   } catch (error) {
-    sendJson(res, 502, { error: "TMDB request failed.", detail: error.message, ...envStatus() });
+    sendJson(res, 502, { error: "TMDB request failed.", detail: error.message });
   }
 }
 
@@ -273,7 +259,7 @@ const server = createServer(async (req, res) => {
     if (req.url.startsWith("/api/omdb")) return handleOmdb(req, res);
     if (req.url.startsWith("/api/poster")) return handlePoster(req, res);
     if (req.url.startsWith("/api/vidsrc-latest")) return handleLatest(req, res);
-    if (req.url.startsWith("/api/health")) return sendJson(res, 200, { ok: true, ...envStatus() });
+    if (req.url.startsWith("/api/health")) return sendJson(res, 200, { ok: true });
     return serveStatic(req, res);
   } catch (error) {
     sendJson(res, 500, { error: error.message });
