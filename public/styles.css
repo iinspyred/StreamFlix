@@ -276,6 +276,42 @@ main {
   scrollbar-color: var(--prime) transparent;
 }
 
+.genre-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.genre-card {
+  display: grid;
+  gap: 0.45rem;
+  align-items: start;
+  min-height: 10rem;
+  padding: 1.2rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 168, 225, 0.12), rgba(7, 17, 25, 0.95));
+  color: var(--text);
+  text-align: left;
+}
+
+.genre-card strong {
+  display: block;
+  font-size: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.genre-card span {
+  color: var(--muted);
+}
+
+.genre-card:hover,
+.genre-card:focus-visible {
+  border-color: var(--prime);
+  box-shadow: 0 18px 42px rgba(0, 168, 225, 0.16);
+}
+
 .movie-card {
   position: relative;
   min-height: 19rem;

@@ -10,10 +10,24 @@ var rowEndpoints = [
   ["top", "Top IMDb", "/movie/top_rated"]
 ];
 
+var genreEndpoints = [
+  ["action", "Action", "/discover/movie?with_genres=28&sort_by=popularity.desc"],
+  ["comedy", "Comedy", "/discover/movie?with_genres=35&sort_by=popularity.desc"],
+  ["drama", "Drama", "/discover/movie?with_genres=18&sort_by=popularity.desc"],
+  ["horror", "Horror", "/discover/movie?with_genres=27&sort_by=popularity.desc"],
+  ["romance", "Romance", "/discover/movie?with_genres=10749&sort_by=popularity.desc"],
+  ["documentary", "Documentary", "/discover/movie?with_genres=99&sort_by=popularity.desc"]
+];
+
 var rowEndpointMap = createMap();
+var genreEndpointMap = createMap();
 for (var i = 0; i < rowEndpoints.length; i++) {
   var row = rowEndpoints[i];
   rowEndpointMap.set(row[0], { title: row[1], endpoint: row[2] });
+}
+for (var i = 0; i < genreEndpoints.length; i++) {
+  var genre = genreEndpoints[i];
+  genreEndpointMap.set(genre[0], { title: genre[1], endpoint: genre[2] });
 }
 
 var storageKey = "streamflix.device.v2";
@@ -33,6 +47,165 @@ var state = {
 // Initialize row pages
 for (var j = 0; j < rowEndpoints.length; j++) {
   state.rowPages[rowEndpoints[j][0]] = 1;
+}
+for (var j = 0; j < genreEndpoints.length; j++) {
+  state.rowPages[genreEndpoints[j][0]] = 1;
+}
+
+var routeConfig = {
+  "#/": { key: "suggestions", title: "Home", showHero: true },
+  "#/home": { key: "suggestions", title: "Home", showHero: true },
+  "#/movies": { key: "movies", title: "Movies", showHero: false },
+  "#/series": { key: "series", title: "TV-Series", showHero: false },
+  "#/top-imdb": { key: "top", title: "Top IMDb", showHero: false },
+  "#/genres": { key: "genres", title: "Genres", showHero: false }
+};
+
+function getRouteConfig() {
+  var hash = location.hash || "#/";
+  if (routeConfig[hash]) {
+    return routeConfig[hash];
+  }
+
+  if (hash.indexOf("#/genre/") === 0) {
+    var slug = hash.substring(8);
+    var genreConfig = genreEndpointMap.get ? genreEndpointMap.get(slug) : genreEndpointMap["_" + slug];
+    if (genreConfig) {
+      return { key: slug, title: genreConfig.title, showHero: false, isGenre: true };
+    }
+  }
+
+  return routeConfig["#/" ];
+}
+
+function updateActiveNav(hash) {
+  if (hash.indexOf("#/genre/") === 0) {
+    hash = "#/genres";
+  }
+  var links = document.querySelectorAll("nav a");
+  for (var i = 0; i < links.length; i++) {
+    var link = links[i];
+    var href = link.getAttribute("href");
+    if (href === hash) {
+      if (link.classList) link.classList.add("is-active");
+      else link.className = (link.className || "") + " is-active";
+    } else {
+      if (link.classList) link.classList.remove("is-active");
+      else link.className = (link.className || "").replace(/\bis-active\b/g, "").trim();
+    }
+  }
+}
+
+function getRowConfig(key) {
+  var config = rowEndpointMap.get ? rowEndpointMap.get(key) : rowEndpointMap["_" + key];
+  if (!config) {
+    config = genreEndpointMap.get ? genreEndpointMap.get(key) : genreEndpointMap["_" + key];
+  }
+  return config;
+}
+
+function loadRoute(key) {
+  if (key === "genres") return Promise.resolve();
+  var config = getRowConfig(key);
+  if (!config) return Promise.resolve();
+  var page = state.rowPages[key] || 1;
+  var endpoint = withPage(config.endpoint, page);
+  var fallbackType = endpoint.indexOf("/tv/") !== -1 ? "tv" : "movie";
+
+  return tmdb(endpoint)
+    .then(function(payload) {
+      var items = [];
+      if (payload && payload.results) {
+        for (var i = 0; i < payload.results.length && items.length < 18; i++) {
+          var item = payload.results[i];
+          if (item.poster_path && item.media_type !== "person") {
+            items.push(normalize(item, fallbackType));
+          }
+        }
+      }
+
+      if (state.rows.set) {
+        state.rows.set(key, { title: config.title, items: items, page: page, totalPages: Math.min(payload.total_pages || 1, 500) });
+      } else {
+        state.rows._data["_" + key] = { title: config.title, items: items, page: page, totalPages: Math.min(payload.total_pages || 1, 500) };
+      }
+
+      for (var j = 0; j < items.length; j++) {
+        var cacheK = cacheKey(items[j].mediaType, items[j].id);
+        state.itemCache.set ? state.itemCache.set(cacheK, items[j]) : (state.itemCache._data["_" + cacheK] = items[j]);
+      }
+    })
+    .catch(function() {
+      if (state.rows.set) {
+        state.rows.set(key, { title: config.title, items: [], page: page, totalPages: 1 });
+      } else {
+        state.rows._data["_" + key] = { title: config.title, items: [], page: page, totalPages: 1 };
+      }
+    });
+}
+
+function renderGenrePage(key, title) {
+  $("#homeView").hidden = false;
+  $("#watchView").hidden = true;
+  $("#heroSlider").innerHTML = "";
+  $("#scheduleList").innerHTML = "";
+
+  if (key === "genres") {
+    var html = '<section class="section-block">' +
+      '<div class="section-head"><h2 class="section-title">Browse Genres</h2></div>' +
+      '<div class="genre-grid">';
+
+    for (var i = 0; i < genreEndpoints.length; i++) {
+      var genre = genreEndpoints[i];
+      html += '<button class="genre-card" data-genre="' + genre[0] + '">' +
+        '<strong>' + escapeHtml(genre[1]) + '</strong>' +
+        '<span>Popular ' + escapeHtml(genre[1]).toLowerCase() + ' movies</span>' +
+        '</button>';
+    }
+
+    html += '</div></section>';
+    $("#sections").innerHTML = html;
+    wireGenreButtons();
+    return Promise.resolve();
+  }
+
+  var row = state.rows.get ? state.rows.get(key) : state.rows["_" + key];
+  if (!row) row = { title: title, items: [], page: 1, totalPages: 1 };
+  $("#sections").innerHTML = sectionHtml(key, row, true) || '<p class="loading-note">No titles found.</p>';
+  wireCards(document);
+  wirePaging();
+  wireStars(document);
+  return Promise.resolve();
+}
+
+function renderRoute(key, title) {
+  $("#homeView").hidden = false;
+  $("#watchView").hidden = true;
+  $("#heroSlider").innerHTML = "";
+  $("#scheduleList").innerHTML = "";
+  var row = state.rows.get ? state.rows.get(key) : state.rows["_" + key];
+  if (!row) row = { title: title, items: [], page: 1, totalPages: 1 };
+  $("#sections").innerHTML = sectionHtml(key, row, true) || '<p class="loading-note">No titles found.</p>';
+  wireCards(document);
+  wirePaging();
+  wireStars(document);
+}
+
+function handleRoute() {
+  var config = getRouteConfig();
+  state.currentRoute = config.key;
+  updateActiveNav(location.hash || "#/" );
+  if (config.showHero) {
+    return loadRows().then(function() {
+      renderHome();
+    });
+  }
+  if (config.key === "genres") {
+    return renderGenrePage(config.key, config.title);
+  }
+  return loadRoute(config.key).then(function() {
+    return renderRoute(config.key, config.title);
+  });
 }
 
 // Helper for Map-like behavior with fallback for very old browsers
@@ -464,6 +637,18 @@ function wireCards(root) {
   }
 }
 
+function wireGenreButtons() {
+  var buttons = document.querySelectorAll(".genre-card");
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].onclick = (function(btn) {
+      return function() {
+        var genre = btn.dataset.genre;
+        location.hash = "#/genre/" + genre;
+      };
+    })(buttons[i]);
+  }
+}
+
 function wireStars(root) {
   var stars = root.querySelectorAll ? root.querySelectorAll("[data-star-id]") : [];
   for (var i = 0; i < stars.length; i++) {
@@ -493,11 +678,12 @@ function wirePaging() {
         state.rowPages[key] = Math.max(1, Math.min(total, (state.rowPages[key] || 1) + dir));
         
         loadRow(key).then(function() {
-          renderHome();
-          var section = document.getElementById(key);
-          if (section && section.scrollIntoView) {
-            section.scrollIntoView(false);
-          }
+          handleRoute().then(function() {
+            var section = document.getElementById(key);
+            if (section && section.scrollIntoView) {
+              section.scrollIntoView(false);
+            }
+          });
         });
       };
     })(pagers[i]);
@@ -774,7 +960,7 @@ function wireGlobal() {
   }
   
   window.onhashchange = function() {
-    if (location.hash === "#/" || location.hash === "") renderHome();
+    handleRoute();
   };
   
   document.onFullscreenChange = function() {
@@ -1017,7 +1203,7 @@ function init() {
   wireGlobal();
   return refreshDomains()
     .then(function() {
-      return loadRows();
+      return handleRoute();
     })
     .catch(function(error) {
       console.log("Init error:", error);
